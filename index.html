@@ -4,28 +4,224 @@
   <meta charset="utf-8" />
   <title>ebook.pdf</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <style>
-    html, body { height: 100%; margin: 0; }
-    /* Fill the entire viewport with the PDF */
-    .fill { position: fixed; inset: 0; }
-    object { width: 100%; height: 100%; border: 0; display: block; }
-    .fallback {
-      position: absolute; inset: 0; display: grid; place-items: center;
-      font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; padding: 24px; text-align: center;
+    html, body { height: 100%; margin: 0; font-family: system-ui, -apple-system, sans-serif; }
+    .container { display: flex; flex-direction: column; height: 100vh; }
+    .toolbar { 
+      background: #f5f5f5; padding: 8px 16px; border-bottom: 1px solid #ddd;
+      display: flex; align-items: center; gap: 16px; flex-shrink: 0;
+    }
+    .toolbar button { 
+      padding: 8px 16px; border: 1px solid #ccc; background: white; 
+      border-radius: 4px; cursor: pointer; font-size: 14px;
+    }
+    .toolbar button:hover { background: #f0f0f0; }
+    .toolbar button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .page-info { font-size: 14px; color: #666; }
+    .canvas-container { 
+      flex: 1; overflow: auto; display: flex; justify-content: center; 
+      align-items: flex-start; padding: 20px; background: #e8e8e8;
+    }
+    canvas { 
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1); background: white; 
+      max-width: 100%; height: auto; display: block;
+    }
+    .loading { 
+      display: flex; justify-content: center; align-items: center; 
+      height: 200px; font-size: 16px; color: #666;
+    }
+    .error { 
+      display: flex; justify-content: center; align-items: center; 
+      height: 200px; font-size: 16px; color: #d32f2f; text-align: center;
     }
   </style>
 </head>
 <body>
-  <div class="fill" role="main" aria-label="PDF viewer">
-    <!-- Native inline PDF rendering -->
-    <object type="application/pdf" data="ebook.pdf#page=1&zoom=page-width">
-      <div class="fallback">
+  <div class="container">
+    <div class="toolbar">
+      <button id="prevBtn">← Previous</button>
+      <button id="nextBtn">Next →</button>
+      <span class="page-info">
+        Page <span id="pageNum">1</span> of <span id="pageCount">0</span>
+      </span>
+      <button id="zoomOutBtn">Zoom Out</button>
+      <button id="zoomInBtn">Zoom In</button>
+      <span class="page-info">
+        Zoom: <span id="zoomLevel">100</span>%
+      </span>
+    </div>
+    
+    <div class="canvas-container">
+      <div id="loading" class="loading">Loading PDF...</div>
+      <div id="error" class="error" style="display: none;">
         <div>
-          <strong>PDF viewer not available.</strong><br />
-          Your browser can’t display PDFs inline. Please open <code>ebook.pdf</code> directly.
+          <strong>Error loading PDF</strong><br>
+          Make sure ebook.pdf exists in your repository.
         </div>
       </div>
-    </object>
+      <canvas id="pdfCanvas" style="display: none;"></canvas>
+    </div>
   </div>
+
+  <script>
+    // Configure PDF.js worker
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+    let pdfDoc = null;
+    let pageNum = 1;
+    let pageRendering = false;
+    let pageNumPending = null;
+    let scale = 1.2;
+
+    const canvas = document.getElementById('pdfCanvas');
+    const ctx = canvas.getContext('2d');
+    const loading = document.getElementById('loading');
+    const error = document.getElementById('error');
+
+    // Load and render PDF
+    async function loadPDF() {
+      try {
+        console.log('Loading PDF: ebook.pdf');
+        
+        // Load PDF
+        pdfDoc = await pdfjsLib.getDocument('ebook.pdf').promise;
+        
+        console.log('PDF loaded successfully, pages:', pdfDoc.numPages);
+        document.getElementById('pageCount').textContent = pdfDoc.numPages;
+        
+        // Hide loading, show canvas
+        loading.style.display = 'none';
+        canvas.style.display = 'block';
+        
+        // Render first page
+        renderPage(pageNum);
+        
+        // Update UI
+        updateUI();
+        
+      } catch (err) {
+        console.error('Error loading PDF:', err);
+        loading.style.display = 'none';
+        error.style.display = 'flex';
+      }
+    }
+
+    // Render specific page
+    function renderPage(num) {
+      if (pageRendering) {
+        pageNumPending = num;
+        return;
+      }
+      pageRendering = true;
+
+      pdfDoc.getPage(num).then(function(page) {
+        const viewport = page.getViewport({ scale: scale });
+        canvas.height = viewport.height;
+        canvas.width = viewport.width;
+
+        const renderContext = {
+          canvasContext: ctx,
+          viewport: viewport
+        };
+
+        const renderTask = page.render(renderContext);
+        renderTask.promise.then(function() {
+          pageRendering = false;
+          if (pageNumPending !== null) {
+            renderPage(pageNumPending);
+            pageNumPending = null;
+          }
+        });
+      });
+
+      document.getElementById('pageNum').textContent = num;
+    }
+
+    // Queue rendering of new page
+    function queueRenderPage(num) {
+      if (pageRendering) {
+        pageNumPending = num;
+      } else {
+        renderPage(num);
+      }
+    }
+
+    // Go to previous page
+    function onPrevPage() {
+      if (pageNum <= 1) return;
+      pageNum--;
+      queueRenderPage(pageNum);
+      updateUI();
+    }
+
+    // Go to next page  
+    function onNextPage() {
+      if (pageNum >= pdfDoc.numPages) return;
+      pageNum++;
+      queueRenderPage(pageNum);
+      updateUI();
+    }
+
+    // Zoom in
+    function onZoomIn() {
+      scale *= 1.2;
+      queueRenderPage(pageNum);
+      updateZoomUI();
+    }
+
+    // Zoom out
+    function onZoomOut() {
+      scale /= 1.2;
+      queueRenderPage(pageNum);
+      updateZoomUI();
+    }
+
+    // Update button states
+    function updateUI() {
+      document.getElementById('prevBtn').disabled = (pageNum <= 1);
+      document.getElementById('nextBtn').disabled = (pageNum >= pdfDoc.numPages);
+    }
+
+    // Update zoom display
+    function updateZoomUI() {
+      document.getElementById('zoomLevel').textContent = Math.round(scale * 100);
+    }
+
+    // Event listeners
+    document.getElementById('prevBtn').addEventListener('click', onPrevPage);
+    document.getElementById('nextBtn').addEventListener('click', onNextPage);
+    document.getElementById('zoomInBtn').addEventListener('click', onZoomIn);
+    document.getElementById('zoomOutBtn').addEventListener('click', onZoomOut);
+
+    // Keyboard navigation
+    document.addEventListener('keydown', function(e) {
+      switch(e.key) {
+        case 'ArrowLeft':
+        case 'ArrowUp':
+          e.preventDefault();
+          onPrevPage();
+          break;
+        case 'ArrowRight':
+        case 'ArrowDown':
+          e.preventDefault();
+          onNextPage();
+          break;
+        case '+':
+        case '=':
+          e.preventDefault();
+          onZoomIn();
+          break;
+        case '-':
+          e.preventDefault();
+          onZoomOut();
+          break;
+      }
+    });
+
+    // Initialize
+    updateZoomUI();
+    loadPDF();
+  </script>
 </body>
 </html>
