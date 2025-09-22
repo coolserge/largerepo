@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>ebook.pdf</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    html, body { height: 100%; margin: 0; }
+    /* Fill the entire viewport with the PDF */
+    .fill { position: fixed; inset: 0; }
+    object { width: 100%; height: 100%; border: 0; display: block; }
+    .fallback {
+      position: absolute; inset: 0; display: grid; place-items: center;
+      font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; padding: 24px; text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="fill" role="main" aria-label="PDF viewer">
+    <!-- Native inline PDF rendering -->
+    <object type="application/pdf" data="ebook.pdf#page=1&zoom=page-width">
+      <div class="fallback">
+        <div>
+          <strong>PDF viewer not available.</strong><br />
+          Your browser can’t display PDFs inline. Please open <code>ebook.pdf</code> directly.
+        </div>
+      </div>
+    </object>
+  </div>
+</body>
+</html>
